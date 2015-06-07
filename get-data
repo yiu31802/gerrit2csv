@@ -1,0 +1,69 @@
+#!/usr/bin/python
+
+import os
+import sys
+
+from repositories import RepoSnapshots
+from utils import ManifestSha1Comparator,RepoCommits
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print "ERROR: Wrong command given"
+        print "ERROR: snapshot/git/gerrit is available"
+        print "ERROR: e.g. get-data snapshot ../REPO ../static_manifest/*.xml"
+        raise Exception("get-data <subcmd> <params>")
+
+    repo_path = sys.argv[2]
+
+    # (1) get-data snapshot
+    if sys.argv[1] == "snapshot":
+        files = sys.argv[3:]
+        outdir = "result-snapshot"
+        if repo_path is "" or len(files) is 0:
+            raise Exception("get-data snapshot <repo_path> <xml_files_path>")
+        if outdir not in os.listdir("."):
+            os.mkdir(outdir)
+        for xml in files:
+            print xml
+            S = RepoSnapshots(xml, repo_path)
+            S.checkout()
+            filename = os.path.join(outdir, xml.split("/")[-1] + "_snapshot.csv")
+            S.measure_files(filename=filename)
+        exit()
+
+    lmani = sys.argv[3]
+    rmani = sys.argv[4]
+    if repo_path is "":
+        raise Exception("get-data git/gerrit <repo_path> <lmani> <rmani>")
+    M = ManifestSha1Comparator(lmani, rmani)
+    GitRepo = RepoCommits(M.common_changed_more, repo_path)
+
+    # (2) get-data git
+    if sys.argv[1] == "git":
+        outdir = "result-git"
+        if outdir not in os.listdir("."):
+            os.mkdir(outdir)
+        GitRepo.init_git_changes()
+        filename = os.path.join(outdir, lmani.split("/")[-1] + "-" +
+                                rmani.split("/")[-1] + "-git.csv")
+        GitRepo.measure_git(filename=filename)
+    # (3) get-data gerrit
+    elif sys.argv[1] == "gerrit":
+        GitRepo.init_gerrit_changes()
+        GitRepo.get_gerrit_changes()
+        C = GitRepo.Changes
+        C.changes_csv()
+        C.patchsets_csv()
+        C.reviews_csv()
+        C.files_csv()
+    # (4) get-data files
+    elif sys.argv[1] == "files":
+        outdir = "result-files"
+        if outdir not in os.listdir("."):
+            os.mkdir(outdir)
+        GitRepo.init_git_files()
+        filename = os.path.join(outdir, lmani.split("/")[-1] + "-" +
+                                rmani.split("/")[-1] + "-files.csv")
+        GitRepo.measure_files(filename=filename)
+    else:
+        print "No proper subcommand found for %s" % sys.argv[1]
